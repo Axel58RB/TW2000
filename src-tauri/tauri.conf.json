@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0.json",
+  "productName": "Typewriter 2000",
+  "version": "1.0.0",
+  "tauri": {
+    "include": [
+      "**/*.{js,ts,jsx,tsx,css,html,json,wasm}",
+      "node_modules/@excalidraw/excalidraw/dist/**/*",
+      "node_modules/react/**/*",
+      "node_modules/react-dom/**/*"
+    ],
+    "builder": {
+      "beforeBuildCommand": "npm run build",
+      "devPath": "http://localhost:3000",
+      "distDir": "../dist",
+      "withGlobalTauri": false
+    },
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "scope": []
+      },
+      "fs": {
+        "all": false,
+        "scope": []
+      },
+      "path": {
+        "all": false,
+        "scope": []
+      },
+      "window": {
+        "all": true
+      },
+      "dialog": {
+        "all": false
+      },
+      "notification": {
+        "all": false
+      }
+    }
+  },
+  "app": {
+    "generate": {
+      "label": "com.axel58rb.typewriter2000"
+    },
+    "windows": [
+      {
+        "title": "Typewriter 2000",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "visible": true
+      }
+    ]
+  }
+}
