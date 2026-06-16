@@ -187,7 +187,7 @@ export interface MindMapData {
 }
 
 // View modes
-export type ViewMode = 'freeform' | 'mindmap' | 'thread' | 'evidence';
+export type ViewMode = 'freeform' | 'mindmap' | 'thread' | 'evidence' | 'map';
 
 // UI state
 export interface UIState {

@@ -1,14 +1,18 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Container, Tag, ParaType, ViewMode, COLORS, PARA_LABELS } from '../types';
 
 interface SidebarProps {
   containers: Container[];
   tags: Tag[];
+  items: any[];
   selectedContainerId: string | null;
+  selectedTagId: string | null;
   onContainerSelect: (containerId: string | null) => void;
   onCreateItem: () => void;
   onCreateContainer: (name: string, para: ParaType, colour?: string) => Promise<void>;
   onCreateTag: (name: string, colour?: string, parentId?: string) => Promise<void>;
+  onQuickCapture: (text: string) => Promise<void>;
+  onTagSelect: (tagId: string | null) => void;
   collapsed: boolean;
   onToggle: () => void;
   searchQuery: string;
@@ -20,11 +24,15 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({
   containers,
   tags,
+  items,
   selectedContainerId,
+  selectedTagId,
   onContainerSelect,
   onCreateItem,
   onCreateContainer,
   onCreateTag,
+  onQuickCapture,
+  onTagSelect,
   collapsed,
   onToggle,
   searchQuery,
@@ -39,6 +47,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showNewTag, setShowNewTag] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColour, setNewTagColour] = useState<string>(COLORS.moss);
+  const [captureText, setCaptureText] = useState('');
+  const captureInputRef = useRef<HTMLInputElement>(null);
 
   // Get PARA groups
   const paraGroups: Record<ParaType, Container[]> = {
@@ -57,10 +67,31 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Count items in each container
   const getItemCount = useCallback((containerId: string | null) => {
-    // This would need to be passed as prop or from context
-    // For now, return 0
-    return 0;
-  }, []);
+    if (containerId === null) {
+      return items.filter(item => item.container_id === null).length;
+    }
+    return items.filter(item => item.container_id === containerId).length;
+  }, [items]);
+
+  // Handle quick capture
+  const handleQuickCapture = useCallback(async () => {
+    if (captureText.trim()) {
+      await onQuickCapture(captureText.trim());
+      setCaptureText('');
+    }
+  }, [captureText, onQuickCapture]);
+
+  // Handle capture on Enter key
+  const handleCaptureKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleQuickCapture();
+    } else if (e.key === 'Escape') {
+      setCaptureText('');
+      if (captureInputRef.current) {
+        captureInputRef.current.blur();
+      }
+    }
+  }, [handleQuickCapture]);
 
   const handleCreateContainer = useCallback(async () => {
     if (newContainerName.trim()) {
@@ -94,10 +125,23 @@ const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h2>Typewriter 2000</h2>
+        <h2>Typewriter 3000</h2>
         <button className="sidebar-toggle" onClick={onToggle} title="Collapse sidebar">
           ◀
         </button>
+      </div>
+
+      {/* Quick Capture Box */}
+      <div className="capture-box">
+        <input
+          ref={captureInputRef}
+          type="text"
+          placeholder="Capture to Inbox…"
+          value={captureText}
+          onChange={(e) => setCaptureText(e.target.value)}
+          onKeyDown={handleCaptureKeyDown}
+          onBlur={handleQuickCapture}
+        />
       </div>
 
       {/* PARA Sections */}
@@ -185,26 +229,34 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="sidebar-section">
         <div className="sidebar-section-title">Tags</div>
         <div className="tag-list">
-          {tags.map((tag) => (
-            <div 
-              key={tag.id} 
-              className="tag-chip"
-              style={{ 
-                backgroundColor: tag.colour ? `${tag.colour}20` : '#e0e0e0',
-                borderColor: tag.colour || '#ccc'
-              }}
-              onClick={() => {
-                // Filter by tag - would need to be implemented
-                console.log('Filter by tag:', tag.name);
-              }}
-            >
-              <span 
-                className="tag-dot" 
-                style={{ backgroundColor: tag.colour || '#ccc' }}
-              />
-              {tag.name}
-            </div>
-          ))}
+          {tags.map((tag) => {
+            const isSelected = selectedTagId === tag.id;
+            return (
+              <div 
+                key={tag.id} 
+                className={`tag-chip ${isSelected ? 'selected' : ''}`}
+                style={{ 
+                  backgroundColor: isSelected ? (tag.colour || '#ccc') : (tag.colour ? `${tag.colour}20` : '#e0e0e0'),
+                  borderColor: tag.colour || '#ccc',
+                  color: isSelected ? 'white' : (tag.colour || '#666')
+                }}
+                onClick={() => {
+                  // Toggle tag filter
+                  if (selectedTagId === tag.id) {
+                    onTagSelect(null);
+                  } else {
+                    onTagSelect(tag.id);
+                  }
+                }}
+              >
+                <span 
+                  className="tag-dot" 
+                  style={{ backgroundColor: tag.colour || '#ccc' }}
+                />
+                {tag.name}
+              </div>
+            );
+          })}
         </div>
         
         {showNewTag ? (
