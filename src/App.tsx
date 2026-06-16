@@ -7,6 +7,8 @@ import ItemEditor from './components/ItemEditor';
 import ThreadView from './components/ThreadView';
 import EvidenceDashboard from './components/EvidenceDashboard';
 import MindMapView from './components/MindMapView';
+import ForceDirectedMapView from './components/ForceDirectedMapView';
+import SearchPalette from './components/SearchPalette';
 
 const App: React.FC = () => {
   const { data, refresh, ...dbActions } = useDatabase();
@@ -18,6 +20,8 @@ const App: React.FC = () => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
 
   // Initialize with default containers if none exist
   useEffect(() => {
@@ -162,18 +166,87 @@ const App: React.FC = () => {
     }
   }, [dbActions]);
 
-  // Filter items based on search
-  const filteredItems = searchQuery.trim() 
-    ? data.items.filter(item => 
-        (item.title?.toLowerCase().includes(searchQuery.toLowerCase()) || '') ||
-        (item.body?.toLowerCase().includes(searchQuery.toLowerCase()) || '') ||
-        (item.essence?.toLowerCase().includes(searchQuery.toLowerCase()) || '')
-      )
-    : getCurrentItems();
+  // Get items for selected tag
+  const getItemsByTag = useCallback((tagId: string | null) => {
+    if (!tagId) return [];
+    const tagItemIds = data.itemTags
+      .filter(it => it.tag_id === tagId)
+      .map(it => it.item_id);
+    return data.items.filter(item => tagItemIds.includes(item.id));
+  }, [data.itemTags, data.items]);
+
+  // Filter items based on search, container, and tag
+  const filteredItems = useCallback(() => {
+    let items = getCurrentItems();
+    
+    // Apply tag filter if selected
+    if (selectedTagId) {
+      const tagItems = getItemsByTag(selectedTagId);
+      items = items.filter(item => tagItems.some(ti => ti.id === item.id));
+    }
+    
+    // Apply search filter if query exists
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      items = items.filter(item => 
+        (item.title?.toLowerCase().includes(lowerQuery) || '') ||
+        (item.body?.toLowerCase().includes(lowerQuery) || '') ||
+        (item.essence?.toLowerCase().includes(lowerQuery) || '')
+      );
+    }
+    
+    return items;
+  }, [getCurrentItems, selectedTagId, getItemsByTag, searchQuery]);
+
+  const currentFilteredItems = filteredItems();
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed(prev => !prev);
+  }, []);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K to open search palette
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchPaletteOpen(prev => !prev);
+      }
+      
+      // Escape to close search palette
+      if (e.key === 'Escape' && searchPaletteOpen) {
+        e.preventDefault();
+        setSearchPaletteOpen(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchPaletteOpen]);
+
+  // Handle search palette selection
+  const handleSearchPaletteSelectItem = useCallback((itemId: string) => {
+    setSelectedItemId(itemId);
+    const item = data.items.find(i => i.id === itemId);
+    if (item) {
+      setEditingItem(item);
+      setShowItemEditor(true);
+    }
+    setSearchPaletteOpen(false);
+  }, [data.items]);
+
+  const handleSearchPaletteSelectContainer = useCallback((containerId: string | null) => {
+    setSelectedContainerId(containerId);
+    setSelectedItemId(null);
+    setSearchPaletteOpen(false);
+  }, []);
+
+  // Handle tag selection
+  const handleTagSelect = useCallback((tagId: string | null) => {
+    setSelectedTagId(tagId);
+    setSelectedContainerId(null);
+    setSearchQuery('');
   }, []);
 
   // Render different views based on viewMode
@@ -182,7 +255,7 @@ const App: React.FC = () => {
       case 'freeform':
         return (
           <CanvasView
-            items={filteredItems}
+            items={currentFilteredItems}
             containers={data.containers}
             tags={data.tags}
             itemTags={data.itemTags}
@@ -202,7 +275,7 @@ const App: React.FC = () => {
       case 'mindmap':
         return (
           <MindMapView
-            items={filteredItems}
+            items={currentFilteredItems}
             containers={data.containers}
             tags={data.tags}
             itemTags={data.itemTags}
@@ -216,7 +289,7 @@ const App: React.FC = () => {
       case 'thread':
         return (
           <ThreadView
-            items={filteredItems}
+            items={currentFilteredItems}
             containers={data.containers}
             tags={data.tags}
             itemTags={data.itemTags}
@@ -230,7 +303,21 @@ const App: React.FC = () => {
       case 'evidence':
         return (
           <EvidenceDashboard
-            items={data.items}
+            items={currentFilteredItems}
+            containers={data.containers}
+            tags={data.tags}
+            itemTags={data.itemTags}
+            links={data.links}
+            getTagsForItem={getTagsForItem}
+            getItemContainer={getItemContainer}
+            onItemSelect={handleItemSelect}
+          />
+        );
+      
+      case 'map':
+        return (
+          <ForceDirectedMapView
+            items={currentFilteredItems}
             containers={data.containers}
             tags={data.tags}
             itemTags={data.itemTags}
@@ -260,7 +347,9 @@ const App: React.FC = () => {
       <Sidebar
         containers={data.containers}
         tags={data.tags}
+        items={data.items}
         selectedContainerId={selectedContainerId}
+        selectedTagId={selectedTagId}
         onContainerSelect={handleContainerSelect}
         onCreateItem={() => handleCreateItem(selectedContainerId)}
         onCreateContainer={async (name, para, colour) => {
@@ -271,6 +360,21 @@ const App: React.FC = () => {
           await dbActions.createTag(name, colour, parentId);
           await refresh();
         }}
+        onQuickCapture={async (text: string) => {
+          // Create a new note in the inbox (container_id = null)
+          const response = await dbActions.createItem(
+            null,
+            'note',
+            text,
+            '',
+            100,
+            100
+          );
+          if (response.success) {
+            await refresh();
+          }
+        }}
+        onTagSelect={handleTagSelect}
         collapsed={sidebarCollapsed}
         onToggle={toggleSidebar}
         searchQuery={searchQuery}
@@ -297,6 +401,12 @@ const App: React.FC = () => {
                 onClick={() => setViewMode('freeform')}
               >
                 Freeform
+              </button>
+              <button 
+                className={`view-tab ${viewMode === 'map' ? 'active' : ''}`}
+                onClick={() => setViewMode('map')}
+              >
+                Map
               </button>
               <button 
                 className={`view-tab ${viewMode === 'mindmap' ? 'active' : ''}`}
@@ -342,10 +452,24 @@ const App: React.FC = () => {
         </div>
       </main>
       
+      {/* Search Palette */}
+      <SearchPalette
+        items={data.items}
+        containers={data.containers}
+        tags={data.tags}
+        itemTags={data.itemTags}
+        links={data.links}
+        isOpen={searchPaletteOpen}
+        onClose={() => setSearchPaletteOpen(false)}
+        onSelectItem={handleSearchPaletteSelectItem}
+        onSelectContainer={handleSearchPaletteSelectContainer}
+      />
+
       {/* Item Editor Modal */}
       {showItemEditor && editingItem && (
         <ItemEditor
           item={editingItem}
+          items={data.items}
           containers={data.containers}
           tags={data.tags}
           itemTags={data.itemTags}

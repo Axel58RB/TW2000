@@ -4,6 +4,7 @@ import { getItemTags } from '../utils/db';
 
 interface ItemEditorProps {
   item: Item;
+  items: Item[];
   containers: Container[];
   tags: Tag[];
   itemTags: ItemTag[];
@@ -20,6 +21,7 @@ interface ItemEditorProps {
 
 const ItemEditor: React.FC<ItemEditorProps> = ({
   item,
+  items,
   containers,
   tags,
   itemTags,
@@ -57,6 +59,12 @@ const ItemEditor: React.FC<ItemEditorProps> = ({
 
   // Get container for current item
   const currentContainer = containers.find(c => c.id === item.container_id);
+
+  // Get container for any item
+  const getItemContainer = useCallback((itemToCheck: Item) => {
+    if (!itemToCheck.container_id) return null;
+    return containers.find(c => c.id === itemToCheck.container_id);
+  }, [containers]);
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -136,16 +144,7 @@ const ItemEditor: React.FC<ItemEditorProps> = ({
   }, [linkToItemId, linkLabel, onCreateLink]);
 
   // Get available items for linking (exclude current item)
-  const availableItems = containers
-    .flatMap(container => 
-      [container, ...containers
-        .filter(c => c.id === container.id)
-        .flatMap(c => containers
-          .filter(cc => cc.id === c.id)
-          .flatMap(cc => [])
-        )
-      ]
-    );
+  const availableItems = items.filter(i => i.id !== item.id);
 
   // Filter containers by PARA type
   const paraContainers: Record<ParaType, Container[]> = {
@@ -297,7 +296,8 @@ const ItemEditor: React.FC<ItemEditorProps> = ({
               <div style={{ marginBottom: '12px' }}>
                 {linkedItems.map((link) => {
                   const otherItemId = link.from_item === item.id ? link.to_item : link.from_item;
-                  const otherItem = containers.find(c => c.id === otherItemId);
+                  const otherItem = items.find(i => i.id === otherItemId);
+                  const otherContainer = getItemContainer(otherItem as Item);
                   return (
                     <div 
                       key={`${link.from_item}-${link.to_item}`}
@@ -312,7 +312,8 @@ const ItemEditor: React.FC<ItemEditorProps> = ({
                       }}
                     >
                       <span>→</span>
-                      <span>{otherItem?.name || otherItemId}</span>
+                      <span>{otherItem?.title || 'Untitled'}</span>
+                      {otherContainer && <span style={{ color: '#999', fontSize: '12px' }}>({otherContainer.name})</span>}
                       {link.label && <span style={{ color: '#666' }}>({link.label})</span>}
                     </div>
                   );
@@ -332,9 +333,9 @@ const ItemEditor: React.FC<ItemEditorProps> = ({
                   style={{ flex: 1 }}
                 >
                   <option value="">Select item to link...</option>
-                  {containers.map((container) => (
-                    <option key={container.id} value={container.id}>
-                      {container.name}
+                  {availableItems.map((availableItem) => (
+                    <option key={availableItem.id} value={availableItem.id}>
+                      {availableItem.title || 'Untitled'} {getItemContainer(availableItem) && `(${getItemContainer(availableItem)?.name})`}
                     </option>
                   ))}
                 </select>
